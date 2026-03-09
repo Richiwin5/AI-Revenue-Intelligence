@@ -97,3 +97,4 @@ wheel==0.46.3
 wrapt==2.1.1
 xyzservices==2025.11.0
 gunicorn==21.2.0
+flask-cors==4.0.0
