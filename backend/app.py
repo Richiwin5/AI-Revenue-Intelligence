@@ -1,38 +1,32 @@
-import os
 from flask import Flask, request, jsonify
-import pandas as pd
+from flask_cors import CORS
+import os, pandas as pd
 from sqlalchemy import create_engine
 import psycopg2
 from rapidfuzz import process
 from dotenv import load_dotenv
+
 load_dotenv()
-# -------------------- Flask app --------------------
+
 app = Flask(__name__)
+CORS(app)  # <-- enable CORS for all endpoints
 
-
-
+# DB setup
 DB_USER = os.getenv("DB_USER")
 DB_PASS = os.getenv("DB_PASS")
 DB_HOST = os.getenv("DB_HOST")
 DB_PORT = os.getenv("DB_PORT")
 DB_NAME = os.getenv("DB_NAME")
 
-print(DB_HOST, DB_USER, DB_PASS, DB_NAME, DB_PORT)  # temporary check
-
-try:
-    conn = psycopg2.connect(
-        host=DB_HOST,
-        port=DB_PORT,
-        database=DB_NAME,
-        user=DB_USER,
-        password=DB_PASS
-    )
-    cur = conn.cursor()
-    engine = create_engine(f"postgresql+psycopg2://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}")
-    print("✅ Connected to Postgres database")
-except Exception as e:
-    print("❌ Could not connect to database:", e)
-    raise e
+conn = psycopg2.connect(
+    host=DB_HOST,
+    port=DB_PORT,
+    database=DB_NAME,
+    user=DB_USER,
+    password=DB_PASS
+)
+cur = conn.cursor()
+engine = create_engine(f"postgresql+psycopg2://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}")
 
 # -------------------- Load LGAs --------------------
 current_dir = os.path.dirname(os.path.abspath(__file__))
