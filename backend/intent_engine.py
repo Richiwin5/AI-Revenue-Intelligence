@@ -57,7 +57,7 @@ def detect_intent(text):
 
     if any(k in text for k in [
         "who owes", "tax gap", "owing tax", "unpaid tax", "tax debt",
-        "tax debtor", "outstanding taxpayer", "debtors", "arrears", "unsettled tax"
+        "tax debtor", "outstanding taxpayer", "debtors", "arrears", "unsettled tax", "outstanding payers"
     ]):
         return "tax_gap"
 

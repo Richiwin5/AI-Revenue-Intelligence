@@ -1,6 +1,8 @@
+# app.py
+import os
+import pandas as pd
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import os, pandas as pd
 from sqlalchemy import create_engine
 import psycopg2
 from rapidfuzz import process
@@ -9,9 +11,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app)  # <-- enable CORS for all endpoints
+CORS(app)
 
-# DB setup
+# -------------------- DATABASE --------------------
 DB_USER = os.getenv("DB_USER")
 DB_PASS = os.getenv("DB_PASS")
 DB_HOST = os.getenv("DB_HOST")
@@ -28,13 +30,13 @@ conn = psycopg2.connect(
 cur = conn.cursor()
 engine = create_engine(f"postgresql+psycopg2://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}")
 
-# -------------------- Load LGAs --------------------
+# -------------------- LOAD LGAs --------------------
 current_dir = os.path.dirname(os.path.abspath(__file__))
-csv_path = os.path.join(current_dir, "../data/lagos_lgas.csv")
+csv_path = os.path.abspath(os.path.join(current_dir, "../data/lagos_lgas.csv"))
 lagos_lga = pd.read_csv(csv_path)
 LGA_LIST = [lga.strip().lower() for lga in lagos_lga["lga_name"].tolist()]
 
-# -------------------- Helpers --------------------
+# -------------------- HELPERS --------------------
 def execute_sql(sql):
     try:
         cur.execute(sql)
@@ -49,85 +51,153 @@ def format_currency(val):
         return "₦0.00"
     return f"₦{float(val):,.2f}"
 
-def match_lga(text):
+def extract_lga(text):
+    if not text:
+        return None
     text = text.lower()
     for lga in LGA_LIST:
         if lga in text:
             return lga
-    match = process.extractOne(text, LGA_LIST, score_cutoff=75)
-    if match:
-        return match[0]
-    return None
+    match = process.extractOne(text, LGA_LIST, score_cutoff=70)
+    return match[0] if match else None
 
-# -------------------- Question parsing --------------------
-def parse_question(question):
-    question = question.lower()
-    parsed = {"intent": None, "lga": match_lga(question)}
+def detect_intent(text):
+    if not text:
+        return "unknown"
+    text = text.lower()
 
-    if "total revenue" in question:
-        parsed["intent"] = "total_revenue"
-    elif "total tax" in question:
-        parsed["intent"] = "total_tax"
-    elif "owe" in question or "owing" in question or "tax gap" in question:
-        parsed["intent"] = "tax_gap"
-    elif "most taxed" in question or "top taxpayer" in question:
-        parsed["intent"] = "most_taxed"
-    elif "average compliance" in question:
-        parsed["intent"] = "average_compliance"
+    # Revenue / Tax / Compliance
+    if any(k in text for k in ["total revenue","revenue collected","total income","income generated","gross revenue"]):
+        return "total_revenue"
+    if any(k in text for k in ["total tax","tax collected","paye collected"]):
+        return "total_tax"
+    if any(k in text for k in ["who owes","tax gap","unpaid tax","tax debt"]):
+        return "tax_gap"
+    if any(k in text for k in ["top taxpayer","highest taxpayer","biggest taxpayer"]):
+        return "most_taxed"
+    if any(k in text for k in ["compliance","average compliance","tax compliance"]):
+        return "average_compliance"
+    
+    # LGA ranking
+    if any(k in text for k in ["highest revenue","top lga","max revenue","richest lga"]):
+        return "top_lga"
+    if any(k in text for k in ["lowest revenue","least revenue","min revenue","poorest lga"]):
+        return "lowest_lga"
 
-    return parsed
+    # Business / sector
+    if any(k in text for k in ["business sector","top sector","top business"]):
+        return "top_sector"
+    
+    # Tables
+    if any(k in text for k in ["taxpayer","taxpayers","debtors"]):
+        return "taxpayer_data"
+    if any(k in text for k in ["business","businesses","companies"]):
+        return "business_data"
+    if any(k in text for k in ["property","properties","estate","land","building"]):
+        return "property_data"
 
-# -------------------- Data fetching --------------------
+    return "unknown"
+
+def parse_question(text):
+    return {"intent": detect_intent(text), "lga": extract_lga(text)}
+
+# -------------------- DATA FUNCTIONS --------------------
 def get_total_revenue(lga=None):
-    lga_condition = f"WHERE LOWER(lga) = '{lga}'" if lga else ""
-    taxpayer_sum = execute_sql(f"SELECT SUM(declared_income) FROM taxpayers {lga_condition};")[0][0] or 0
-    business_sum = execute_sql(f"SELECT SUM(annual_revenue) FROM businesses {lga_condition};")[0][0] or 0
-    property_sum = execute_sql(f"SELECT SUM(estimated_value) FROM properties {lga_condition};")[0][0] or 0
-    return taxpayer_sum + business_sum + property_sum
+    cond = f"WHERE LOWER(lga) = '{lga}'" if lga else ""
+    tax_sum = execute_sql(f"SELECT SUM(declared_income) FROM taxpayers {cond};")[0][0] or 0
+    bus_sum = execute_sql(f"SELECT SUM(annual_revenue) FROM businesses {cond};")[0][0] or 0
+    prop_sum = execute_sql(f"SELECT SUM(estimated_value) FROM properties {cond};")[0][0] or 0
+    return tax_sum + bus_sum + prop_sum
 
 def get_total_tax(lga=None):
-    lga_condition = f"WHERE LOWER(t.lga) = '{lga}'" if lga else ""
+    cond = f"WHERE LOWER(t.lga) = '{lga}'" if lga else ""
     sql = f"""
         SELECT SUM(tr.expected_tax)
         FROM tax_records tr
         JOIN taxpayers t ON t.id = tr.taxpayer_id
-        {lga_condition};
+        {cond};
     """
     return execute_sql(sql)[0][0] or 0
 
 def get_tax_gap(lga=None):
-    lga_condition = f"AND LOWER(t.lga) = '{lga}'" if lga else ""
+    cond = f"AND LOWER(t.lga) = '{lga}'" if lga else ""
     sql = f"""
         SELECT t.full_name, SUM(tr.expected_tax - tr.tax_paid) AS unpaid_tax
         FROM taxpayers t
         JOIN tax_records tr ON t.id = tr.taxpayer_id
-        WHERE tr.tax_paid < tr.expected_tax {lga_condition}
+        WHERE tr.tax_paid < tr.expected_tax {cond}
         GROUP BY t.full_name
         ORDER BY unpaid_tax DESC
         LIMIT 5;
     """
     rows = execute_sql(sql)
-    return [{"name": name, "unpaid_tax": float(amount)} for name, amount in rows] if rows else []
+    return [{"name": n, "unpaid_tax": float(a)} for n, a in rows] if rows else []
 
 def get_most_taxed(lga=None):
-    lga_condition = f"WHERE LOWER(t.lga) = '{lga}'" if lga else ""
+    cond = f"WHERE LOWER(t.lga) = '{lga}'" if lga else ""
     sql = f"""
         SELECT t.full_name, SUM(tr.expected_tax) AS total_tax
         FROM taxpayers t
         JOIN tax_records tr ON t.id = tr.taxpayer_id
-        {lga_condition}
+        {cond}
         GROUP BY t.full_name
         ORDER BY total_tax DESC
         LIMIT 1;
     """
     rows = execute_sql(sql)
-    return {"name": rows[0][0], "total_tax": float(rows[0][1])} if rows else {}
+    if rows:
+        return {"name": rows[0][0], "total_tax": float(rows[0][1])}
+    return {}
 
 def get_average_compliance(lga=None):
-    lga_condition = f"WHERE LOWER(lga) = '{lga}'" if lga else ""
-    sql = f"SELECT AVG(compliance_score) FROM taxpayers {lga_condition};"
-    result = execute_sql(sql)[0][0] or 0
-    return float(result)
+    cond = f"WHERE LOWER(lga) = '{lga}'" if lga else ""
+    sql = f"SELECT AVG(compliance_score) FROM taxpayers {cond};"
+    return float(execute_sql(sql)[0][0] or 0)
+
+def get_top_lga():
+    sql = """
+        SELECT lga, SUM(declared_income)+SUM(annual_revenue)+SUM(estimated_value) AS total
+        FROM (
+            SELECT lga, declared_income, 0 AS annual_revenue, 0 AS estimated_value FROM taxpayers
+            UNION ALL
+            SELECT lga, 0, annual_revenue, 0 FROM businesses
+            UNION ALL
+            SELECT lga, 0, 0, estimated_value FROM properties
+        ) t
+        GROUP BY lga
+        ORDER BY total DESC
+        LIMIT 1;
+    """
+    row = execute_sql(sql)
+    return {"lga": row[0][0], "total": row[0][1]} if row else {}
+
+def get_lowest_lga():
+    sql = """
+        SELECT lga, SUM(declared_income)+SUM(annual_revenue)+SUM(estimated_value) AS total
+        FROM (
+            SELECT lga, declared_income, 0 AS annual_revenue, 0 AS estimated_value FROM taxpayers
+            UNION ALL
+            SELECT lga, 0, annual_revenue, 0 FROM businesses
+            UNION ALL
+            SELECT lga, 0, 0, estimated_value FROM properties
+        ) t
+        GROUP BY lga
+        ORDER BY total ASC
+        LIMIT 1;
+    """
+    row = execute_sql(sql)
+    return {"lga": row[0][0], "total": row[0][1]} if row else {}
+
+def get_top_sector():
+    sql = """
+        SELECT occupation, SUM(declared_income) AS total
+        FROM taxpayers
+        GROUP BY occupation
+        ORDER BY total DESC
+        LIMIT 1;
+    """
+    row = execute_sql(sql)
+    return {"occupation": row[0][0], "total": row[0][1]} if row else {}
 
 # -------------------- /ask API --------------------
 @app.route("/ask", methods=["POST"])
@@ -135,30 +205,37 @@ def ask():
     data = request.json
     question = data.get("question", "")
     parsed = parse_question(question)
+    intent = parsed.get("intent")
     lga = parsed.get("lga")
 
-    if not parsed["intent"]:
-        return jsonify({"response": "Ask for: total revenue, total tax, who owes tax, most taxed, or average compliance."})
-
-    if parsed["intent"] == "total_revenue":
+    if intent in ["total_revenue"]:
         return jsonify({"response": format_currency(get_total_revenue(lga))})
-    elif parsed["intent"] == "total_tax":
+    if intent in ["total_tax"]:
         return jsonify({"response": format_currency(get_total_tax(lga))})
-    elif parsed["intent"] == "tax_gap":
+    if intent == "tax_gap":
         gap = get_tax_gap(lga)
         if not gap:
             return jsonify({"response": "No records found."})
-        response = "\n".join([f"{r['name']} — {format_currency(r['unpaid_tax'])}" for r in gap])
-        return jsonify({"response": response})
-    elif parsed["intent"] == "most_taxed":
-        most = get_most_taxed(lga)
-        if not most:
+        resp = "\n".join([f"{r['name']} — {format_currency(r['unpaid_tax'])}" for r in gap])
+        return jsonify({"response": resp})
+    if intent in ["most_taxed"]:
+        top = get_most_taxed(lga)
+        if not top:
             return jsonify({"response": "No records found."})
-        return jsonify({"response": f"{most['name']} — {format_currency(most['total_tax'])}"})
-    elif parsed["intent"] == "average_compliance":
+        return jsonify({"response": f"{top['name']} — {format_currency(top['total_tax'])}"})
+    if intent == "average_compliance":
         return jsonify({"response": f"{get_average_compliance(lga):.2f}%"})
+    if intent == "top_lga":
+        top = get_top_lga()
+        return jsonify({"response": f"{top['lga']} — {format_currency(top['total'])}"})
+    if intent == "lowest_lga":
+        low = get_lowest_lga()
+        return jsonify({"response": f"{low['lga']} — {format_currency(low['total'])}"})
+    if intent == "top_sector":
+        sector = get_top_sector()
+        return jsonify({"response": f"{sector['occupation']} — {format_currency(sector['total'])}"})
 
-    return jsonify({"response": "Could not process your request."})
+    return jsonify({"response": "I couldn't understand the question. Ask about revenue, tax, compliance, LGA ranking, or top sectors."})
 
 # -------------------- /summary API --------------------
 @app.route("/summary", methods=["GET"])
@@ -201,10 +278,241 @@ def summary():
     }
     return jsonify(response)
 
-# -------------------- Run Flask --------------------
+# -------------------- RUN --------------------
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# from flask import Flask, request, jsonify
+# from flask_cors import CORS
+# import os, pandas as pd
+# from sqlalchemy import create_engine
+# import psycopg2
+# from rapidfuzz import process
+# from dotenv import load_dotenv
+
+# load_dotenv()
+
+# app = Flask(__name__)
+# CORS(app)  # <-- enable CORS for all endpoints
+
+# # DB setup
+# DB_USER = os.getenv("DB_USER")
+# DB_PASS = os.getenv("DB_PASS")
+# DB_HOST = os.getenv("DB_HOST")
+# DB_PORT = os.getenv("DB_PORT")
+# DB_NAME = os.getenv("DB_NAME")
+
+# conn = psycopg2.connect(
+#     host=DB_HOST,
+#     port=DB_PORT,
+#     database=DB_NAME,
+#     user=DB_USER,
+#     password=DB_PASS
+# )
+# cur = conn.cursor()
+# engine = create_engine(f"postgresql+psycopg2://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}")
+
+# # -------------------- Load LGAs --------------------
+# current_dir = os.path.dirname(os.path.abspath(__file__))
+# csv_path = os.path.join(current_dir, "../data/lagos_lgas.csv")
+# lagos_lga = pd.read_csv(csv_path)
+# LGA_LIST = [lga.strip().lower() for lga in lagos_lga["lga_name"].tolist()]
+
+# # -------------------- Helpers --------------------
+# def execute_sql(sql):
+#     try:
+#         cur.execute(sql)
+#         return cur.fetchall()
+#     except Exception as e:
+#         print("SQL ERROR:", e)
+#         conn.rollback()
+#         return []
+
+# def format_currency(val):
+#     if val is None:
+#         return "₦0.00"
+#     return f"₦{float(val):,.2f}"
+
+# def match_lga(text):
+#     text = text.lower()
+#     for lga in LGA_LIST:
+#         if lga in text:
+#             return lga
+#     match = process.extractOne(text, LGA_LIST, score_cutoff=75)
+#     if match:
+#         return match[0]
+#     return None
+
+# # -------------------- Question parsing --------------------
+# def parse_question(question):
+#     question = question.lower()
+#     parsed = {"intent": None, "lga": match_lga(question)}
+
+#     if "total revenue" in question:
+#         parsed["intent"] = "total_revenue"
+#     elif "total tax" in question:
+#         parsed["intent"] = "total_tax"
+#     elif "owe" in question or "owing" in question or "tax gap" in question:
+#         parsed["intent"] = "tax_gap"
+#     elif "most taxed" in question or "top taxpayer" in question:
+#         parsed["intent"] = "most_taxed"
+#     elif "average compliance" in question:
+#         parsed["intent"] = "average_compliance"
+
+#     return parsed
+
+# # -------------------- Data fetching --------------------
+# def get_total_revenue(lga=None):
+#     lga_condition = f"WHERE LOWER(lga) = '{lga}'" if lga else ""
+#     taxpayer_sum = execute_sql(f"SELECT SUM(declared_income) FROM taxpayers {lga_condition};")[0][0] or 0
+#     business_sum = execute_sql(f"SELECT SUM(annual_revenue) FROM businesses {lga_condition};")[0][0] or 0
+#     property_sum = execute_sql(f"SELECT SUM(estimated_value) FROM properties {lga_condition};")[0][0] or 0
+#     return taxpayer_sum + business_sum + property_sum
+
+# def get_total_tax(lga=None):
+#     lga_condition = f"WHERE LOWER(t.lga) = '{lga}'" if lga else ""
+#     sql = f"""
+#         SELECT SUM(tr.expected_tax)
+#         FROM tax_records tr
+#         JOIN taxpayers t ON t.id = tr.taxpayer_id
+#         {lga_condition};
+#     """
+#     return execute_sql(sql)[0][0] or 0
+
+# def get_tax_gap(lga=None):
+#     lga_condition = f"AND LOWER(t.lga) = '{lga}'" if lga else ""
+#     sql = f"""
+#         SELECT t.full_name, SUM(tr.expected_tax - tr.tax_paid) AS unpaid_tax
+#         FROM taxpayers t
+#         JOIN tax_records tr ON t.id = tr.taxpayer_id
+#         WHERE tr.tax_paid < tr.expected_tax {lga_condition}
+#         GROUP BY t.full_name
+#         ORDER BY unpaid_tax DESC
+#         LIMIT 5;
+#     """
+#     rows = execute_sql(sql)
+#     return [{"name": name, "unpaid_tax": float(amount)} for name, amount in rows] if rows else []
+
+# def get_most_taxed(lga=None):
+#     lga_condition = f"WHERE LOWER(t.lga) = '{lga}'" if lga else ""
+#     sql = f"""
+#         SELECT t.full_name, SUM(tr.expected_tax) AS total_tax
+#         FROM taxpayers t
+#         JOIN tax_records tr ON t.id = tr.taxpayer_id
+#         {lga_condition}
+#         GROUP BY t.full_name
+#         ORDER BY total_tax DESC
+#         LIMIT 1;
+#     """
+#     rows = execute_sql(sql)
+#     return {"name": rows[0][0], "total_tax": float(rows[0][1])} if rows else {}
+
+# def get_average_compliance(lga=None):
+#     lga_condition = f"WHERE LOWER(lga) = '{lga}'" if lga else ""
+#     sql = f"SELECT AVG(compliance_score) FROM taxpayers {lga_condition};"
+#     result = execute_sql(sql)[0][0] or 0
+#     return float(result)
+
+# # -------------------- /ask API --------------------
+# @app.route("/ask", methods=["POST"])
+# def ask():
+#     data = request.json
+#     question = data.get("question", "")
+#     parsed = parse_question(question)
+#     lga = parsed.get("lga")
+
+#     if not parsed["intent"]:
+#         return jsonify({"response": "Ask for: total revenue, total tax, who owes tax, most taxed, or average compliance."})
+
+#     if parsed["intent"] == "total_revenue":
+#         return jsonify({"response": format_currency(get_total_revenue(lga))})
+#     elif parsed["intent"] == "total_tax":
+#         return jsonify({"response": format_currency(get_total_tax(lga))})
+#     elif parsed["intent"] == "tax_gap":
+#         gap = get_tax_gap(lga)
+#         if not gap:
+#             return jsonify({"response": "No records found."})
+#         response = "\n".join([f"{r['name']} — {format_currency(r['unpaid_tax'])}" for r in gap])
+#         return jsonify({"response": response})
+#     elif parsed["intent"] == "most_taxed":
+#         most = get_most_taxed(lga)
+#         if not most:
+#             return jsonify({"response": "No records found."})
+#         return jsonify({"response": f"{most['name']} — {format_currency(most['total_tax'])}"})
+#     elif parsed["intent"] == "average_compliance":
+#         return jsonify({"response": f"{get_average_compliance(lga):.2f}%"})
+
+#     return jsonify({"response": "Could not process your request."})
+
+# # -------------------- /summary API --------------------
+# @app.route("/summary", methods=["GET"])
+# def summary():
+#     taxpayer_income = pd.read_sql("SELECT * FROM taxpayers", engine).groupby('lga')['declared_income'].sum().reset_index()
+#     business_income = pd.read_sql("SELECT * FROM businesses", engine).groupby('lga')['annual_revenue'].sum().reset_index()
+#     property_income = pd.read_sql("SELECT * FROM properties", engine).groupby('lga')['estimated_value'].sum().reset_index()
+
+#     summary_df = lagos_lga[['lga_name','latitude','longitude']].merge(
+#         taxpayer_income, left_on='lga_name', right_on='lga', how='left'
+#     ).merge(
+#         business_income, left_on='lga_name', right_on='lga', how='left'
+#     ).merge(
+#         property_income, left_on='lga_name', right_on='lga', how='left'
+#     )
+
+#     num_cols = ['declared_income', 'annual_revenue', 'estimated_value']
+#     summary_df[num_cols] = summary_df[num_cols].fillna(0)
+#     summary_df['total_income'] = summary_df[num_cols].sum(axis=1)
+
+#     highest = summary_df.loc[summary_df['total_income'].idxmax()]
+#     lowest = summary_df.loc[summary_df['total_income'].idxmin()]
+
+#     top_business = pd.read_sql(
+#         "SELECT occupation, SUM(declared_income) AS total_income FROM taxpayers GROUP BY occupation ORDER BY total_income DESC LIMIT 1;",
+#         engine
+#     ).iloc[0]
+
+#     response = {
+#         "LGA_summary": summary_df[['lga_name','total_income']].to_dict(orient="records"),
+#         "highest_LGA": {"name": highest['lga_name'], "total_income": float(highest['total_income'])},
+#         "lowest_LGA": {"name": lowest['lga_name'], "total_income": float(lowest['total_income'])},
+#         "top_business_type": {"occupation": top_business['occupation'], "total_income": float(top_business['total_income'])},
+#         "map": "../data/business_lga_map.html",
+#         "recommendations": [
+#             f"Focus policy incentives on {top_business['occupation']} sector.",
+#             f"Investigate low-performing LGA: {lowest['lga_name']}.",
+#             f"Strengthen compliance in high-performing LGA: {highest['lga_name']}."
+#         ]
+#     }
+#     return jsonify(response)
+
+# # -------------------- Run Flask --------------------
+# if __name__ == "__main__":
+#     port = int(os.getenv("PORT", 10000))
+#     app.run(host="0.0.0.0", port=port)
 
 
 
