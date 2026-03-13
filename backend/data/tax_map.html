@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+    
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap-glyphicons.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.2.0/css/all.min.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/python-visualization/folium/folium/templates/leaflet.awesome.rotate.min.css"/>
+    
+            <meta name="viewport" content="width=device-width,
+                initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+            <style>
+                #map_9b755c0936b01f6c9a22eea78fa3ae14 {
+                    position: relative;
+                    width: 100.0%;
+                    height: 100.0%;
+                    left: 0.0%;
+                    top: 0.0%;
+                }
+                .leaflet-container { font-size: 1rem; }
+            </style>
+
+            <style>html, body {
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 0;
+            }
+            </style>
+
+            <style>#map {
+                position:absolute;
+                top:0;
+                bottom:0;
+                right:0;
+                left:0;
+                }
+            </style>
+
+            <script>
+                L_NO_TOUCH = false;
+                L_DISABLE_3D = false;
+            </script>
+
+        
+</head>
+<body>
+    
+    
+            <div class="folium-map" id="map_9b755c0936b01f6c9a22eea78fa3ae14" ></div>
+        
+</body>
+<script>
+    
+    
+            var map_9b755c0936b01f6c9a22eea78fa3ae14 = L.map(
+                "map_9b755c0936b01f6c9a22eea78fa3ae14",
+                {
+                    center: [6.5244, 3.3792],
+                    crs: L.CRS.EPSG3857,
+                    ...{
+  "zoom": 11,
+  "zoomControl": true,
+  "preferCanvas": false,
+}
+
+                }
+            );
+
+            
+
+        
+    
+            var tile_layer_6bf913624804b61fd0ef435dd3ce2b65 = L.tileLayer(
+                "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                {
+  "minZoom": 0,
+  "maxZoom": 19,
+  "maxNativeZoom": 19,
+  "noWrap": false,
+  "attribution": "\u0026copy; \u003ca href=\"https://www.openstreetmap.org/copyright\"\u003eOpenStreetMap\u003c/a\u003e contributors",
+  "subdomains": "abc",
+  "detectRetina": false,
+  "tms": false,
+  "opacity": 1,
+}
+
+            );
+        
+    
+            tile_layer_6bf913624804b61fd0ef435dd3ce2b65.addTo(map_9b755c0936b01f6c9a22eea78fa3ae14);
+        
+    
+            var marker_0fe5e914705f65944ac3140f88637bda = L.marker(
+                [6.5974727, 3.3432815],
+                {
+}
+            ).addTo(map_9b755c0936b01f6c9a22eea78fa3ae14);
+        
+    
+        var popup_8e8b09e048443a395980f24a626da49f = L.popup({
+  "maxWidth": "100%",
+});
+
+        
+            
+                var html_27a4b4ba949890df487a41a55358d0a2 = $(`<div id="html_27a4b4ba949890df487a41a55358d0a2" style="width: 100.0%; height: 100.0%;">Shop A | Tax Paid: ₦50000</div>`)[0];
+                popup_8e8b09e048443a395980f24a626da49f.setContent(html_27a4b4ba949890df487a41a55358d0a2);
+            
+        
+
+        marker_0fe5e914705f65944ac3140f88637bda.bindPopup(popup_8e8b09e048443a395980f24a626da49f)
+        ;
+
+        
+    
+    
+            var marker_0a997852cd65c1a717ea67696da3f005 = L.marker(
+                [6.5114693, 3.3699982],
+                {
+}
+            ).addTo(map_9b755c0936b01f6c9a22eea78fa3ae14);
+        
+    
+        var popup_13e4169ea309e5e54b9757a7509ee970 = L.popup({
+  "maxWidth": "100%",
+});
+
+        
+            
+                var html_b629c47d6c893601fbb7abb3b1e8fb64 = $(`<div id="html_b629c47d6c893601fbb7abb3b1e8fb64" style="width: 100.0%; height: 100.0%;">Restaurant B | Tax Paid: ₦120000</div>`)[0];
+                popup_13e4169ea309e5e54b9757a7509ee970.setContent(html_b629c47d6c893601fbb7abb3b1e8fb64);
+            
+        
+
+        marker_0a997852cd65c1a717ea67696da3f005.bindPopup(popup_13e4169ea309e5e54b9757a7509ee970)
+        ;
+
+        
+    
+    
+            var marker_eb0446ebb55d2ccef2341498ccbd0569 = L.marker(
+                [-1.3624906, 36.9210561],
+                {
+}
+            ).addTo(map_9b755c0936b01f6c9a22eea78fa3ae14);
+        
+    
+        var popup_8df5c01cb9e713036efcec35cfff4aad = L.popup({
+  "maxWidth": "100%",
+});
+
+        
+            
+                var html_a53651f4c2d71ce457bb54eb4cf40f9e = $(`<div id="html_a53651f4c2d71ce457bb54eb4cf40f9e" style="width: 100.0%; height: 100.0%;">Tech Hub C | Tax Paid: ₦300000</div>`)[0];
+                popup_8df5c01cb9e713036efcec35cfff4aad.setContent(html_a53651f4c2d71ce457bb54eb4cf40f9e);
+            
+        
+
+        marker_eb0446ebb55d2ccef2341498ccbd0569.bindPopup(popup_8df5c01cb9e713036efcec35cfff4aad)
+        ;
+
+        
+    
+</script>
+</html>
