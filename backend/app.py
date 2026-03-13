@@ -543,7 +543,7 @@ def health():
         "chatbot_initialized": True
     })
 
-# -------------------- /lgas API --------------------
+
 @app.route("/lgas", methods=["GET"])
 def get_lgas():
     """Get list of all LGAs with coordinates"""
