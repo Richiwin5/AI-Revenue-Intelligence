@@ -35,7 +35,7 @@ print(f"✅ Loaded {len(LGA_LIST)} LGAs")
 
 # -------------------- IMPORT FROM CHATBOT --------------------
 # Import the actual functions that exist in chatbot.py
-from chatbot import (
+from backend.chatbot import (
     RevenueChatbot, 
     format_currency, 
     format_percentage,
